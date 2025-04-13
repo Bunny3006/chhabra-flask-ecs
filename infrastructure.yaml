@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Chhabra Final Test - Flask API on ECS Fargate with NAT, Scaling, ALB
+
+Parameters:
+  VpcCIDR:
+    Default: 10.0.0.0/16
+    Type: String
+
+Resources:
+
+  ChhabraVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: chhabra-vpc
+
+  ChhabraInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  ChhabraAttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref ChhabraInternetGateway
+      VpcId: !Ref ChhabraVPC
+
+  ChhabraPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ChhabraVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: chhabra-public-subnet-1
+
+  ChhabraPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ChhabraVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: chhabra-public-subnet-2
+
+  ChhabraPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ChhabraVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: chhabra-private-subnet-1
+
+  ChhabraPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ChhabraVPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: chhabra-private-subnet-2
+
+  ChhabraEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  ChhabraNATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ChhabraEIP.AllocationId
+      SubnetId: !Ref ChhabraPublicSubnet1
+      Tags:
+        - Key: Name
+          Value: chhabra-nat-gateway
+
+  ChhabraPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ChhabraVPC
+
+  ChhabraPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: ChhabraAttachIGW
+    Properties:
+      RouteTableId: !Ref ChhabraPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ChhabraInternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ChhabraPublicSubnet1
+      RouteTableId: !Ref ChhabraPublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ChhabraPublicSubnet2
+      RouteTableId: !Ref ChhabraPublicRouteTable
+
+  ChhabraPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ChhabraVPC
+
+  ChhabraPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref ChhabraPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref ChhabraNATGateway
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ChhabraPrivateSubnet1
+      RouteTableId: !Ref ChhabraPrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ChhabraPrivateSubnet2
+      RouteTableId: !Ref ChhabraPrivateRouteTable
+
+  ChhabraALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: chhabra-alb-sg
+      VpcId: !Ref ChhabraVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  ChhabraECSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: chhabra-ecs-sg
+      VpcId: !Ref ChhabraVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          SourceSecurityGroupId: !Ref ChhabraALBSG
+
+  ChhabraECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: chhabra-ecs-cluster
+
+  ChhabraExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: chhabra-ecs-task-execution-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  ChhabraALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: chhabra-alb
+      Subnets: [!Ref ChhabraPublicSubnet1, !Ref ChhabraPublicSubnet2]
+      SecurityGroups: [!Ref ChhabraALBSG]
+      Scheme: internet-facing
+      Type: application
+
+  ChhabraTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: chhabra-target-group
+      Port: 5000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref ChhabraVPC
+      HealthCheckPath: /
+
+  ChhabraALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ChhabraALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ChhabraTargetGroup
+
+  ChhabraTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: chhabra-api-task
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt ChhabraExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: chhabra-container
+          Image:  940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api
+          PortMappings:
+            - ContainerPort: 5000
+
+  ChhabraECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ChhabraALBListener
+    Properties:
+      Cluster: !Ref ChhabraECSCluster
+      DesiredCount: 2
+      LaunchType: FARGATE
+      TaskDefinition: !Ref ChhabraTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups: [!Ref ChhabraECSSG]
+          Subnets: [!Ref ChhabraPrivateSubnet1, !Ref ChhabraPrivateSubnet2]
+      LoadBalancers:
+        - TargetGroupArn: !Ref ChhabraTargetGroup
+          ContainerName: chhabra-container
+          ContainerPort: 5000
+
+  ChhabraScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 5
+      MinCapacity: 2
+      ResourceId: !Join ['', ['service/', !Ref ChhabraECSCluster, '/', !GetAtt ChhabraECSService.Name]]
+      RoleARN: !GetAtt ChhabraExecutionRole.Arn
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ChhabraScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: chhabra-ecs-target-tracking
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ChhabraScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 50
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 120
+        ScaleOutCooldown: 120
+
