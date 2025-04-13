@@ -3,6 +3,10 @@ version: 0.2
 phases:
   pre_build:
     commands:
+      - echo Installing AWS CLI...
+      - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      - unzip awscliv2.zip
+      - sudo ./aws/install
       - echo Logging in to Amazon ECR...
       - $(aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin 940922024450.dkr.ecr.ca-central-1.amazonaws.com)
 
