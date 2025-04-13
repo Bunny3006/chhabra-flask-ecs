@@ -3,25 +3,19 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - echo Installing AWS CLI...
-      - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-      - unzip awscliv2.zip
-      - sudo ./aws/install
       - echo Logging in to Amazon ECR...
-      - $(aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin 940922024450.dkr.ecr.ca-central-1.amazonaws.com)
-
+      - aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin 940922024450.dkr.ecr.ca-central-1.amazonaws.com
   build:
     commands:
+      - echo Build started on `date`
       - echo Building the Docker image...
       - docker build -t chhabra-final-api .
       - docker tag chhabra-final-api:latest 940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api:latest
-
   post_build:
     commands:
-      - echo Pushing the Docker image to ECR...
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
       - docker push 940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api:latest
-      - echo Writing imagedefinitions.json for ECS...
-      - printf '[{"name":"chhabra-container","imageUri":"940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api:latest"}]' > imagedefinitions.json
 
 artifacts:
   files:
