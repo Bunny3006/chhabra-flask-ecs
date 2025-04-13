@@ -17,6 +17,3 @@ phases:
       - echo Pushing the Docker image...
       - docker push 940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api:latest
 
-artifacts:
-  files:
-    - imagedefinitions.json
