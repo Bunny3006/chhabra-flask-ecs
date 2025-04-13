@@ -5,15 +5,22 @@ phases:
     commands:
       - echo Logging in to Amazon ECR...
       - aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin 940922024450.dkr.ecr.ca-central-1.amazonaws.com
+
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
       - docker build -t chhabra-final-api .
       - docker tag chhabra-final-api:latest 940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api:latest
+
   post_build:
     commands:
       - echo Build completed on `date`
       - echo Pushing the Docker image...
       - docker push 940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api:latest
+      - echo Writing imagedefinitions.json file...
+      - printf '[{"name":"chhabra-container","imageUri":"940922024450.dkr.ecr.ca-central-1.amazonaws.com/chhabra-final-api:latest"}]' > imagedefinitions.json
 
+artifacts:
+  files:
+    - imagedefinitions.json
